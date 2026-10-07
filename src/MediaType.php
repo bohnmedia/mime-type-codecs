@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs;
+namespace BohnMedia\MimeTypeCodecs;
 
 /**
  * A media type with its codecs parameter, e.g. video/mp4; codecs="av01.0.08M.08, mp4a.40.2" (RFC 6381).

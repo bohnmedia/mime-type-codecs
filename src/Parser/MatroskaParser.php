@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs\Parser;
+namespace BohnMedia\MimeTypeCodecs\Parser;
 
-use BohnMedia\MediaCodecs\MediaType;
+use BohnMedia\MimeTypeCodecs\MediaType;
 
 /**
  * WebM and Matroska (EBML). Reads the DocType and the Tracks element: TrackType, CodecID and CodecPrivate of every track.

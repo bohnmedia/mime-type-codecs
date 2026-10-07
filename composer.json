@@ -1,5 +1,5 @@
 {
-    "name": "bohnmedia/media-codecs",
+    "name": "bohnmedia/mime-type-codecs",
     "description": "Reads the complete media type including the RFC 6381 codecs parameter (e.g. video/mp4; codecs=\"av01.0.08M.08, mp4a.40.2\") from MP4/MOV and WebM/Matroska container headers – no external tools, no dependencies.",
     "license": "MIT",
     "type": "library",
@@ -12,10 +12,10 @@
         "phpstan/phpstan": "^2.0"
     },
     "autoload": {
-        "psr-4": { "BohnMedia\\MediaCodecs\\": "src/" }
+        "psr-4": { "BohnMedia\\MimeTypeCodecs\\": "src/" }
     },
     "autoload-dev": {
-        "psr-4": { "BohnMedia\\MediaCodecs\\Tests\\": "tests/" }
+        "psr-4": { "BohnMedia\\MimeTypeCodecs\\Tests\\": "tests/" }
     },
     "scripts": {
         "test": "phpunit",

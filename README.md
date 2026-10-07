@@ -1,4 +1,4 @@
-# bohnmedia/media-codecs
+# bohnmedia/mime-type-codecs
 
 Reads the complete media type of audio and video files from the container header, including the
 [RFC 6381 `codecs` parameter](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/codecs_parameter):
@@ -28,7 +28,7 @@ without a request:
 ## Usage
 
 ```php
-use BohnMedia\MediaCodecs\MediaTypeDetector;
+use BohnMedia\MimeTypeCodecs\MediaTypeDetector;
 
 $mediaType = (new MediaTypeDetector())->detectFromFile('video.mp4');
 // or: ->detectFromStream($seekableStream)

@@ -2,7 +2,7 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs\Parser;
+namespace BohnMedia\MimeTypeCodecs\Parser;
 
 /**
  * Builds RFC 6381 codec strings from the decoder configuration records of the containers.

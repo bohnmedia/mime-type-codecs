@@ -2,11 +2,11 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs;
+namespace BohnMedia\MimeTypeCodecs;
 
-use BohnMedia\MediaCodecs\Parser\IsoBmffParser;
-use BohnMedia\MediaCodecs\Parser\MatroskaParser;
-use BohnMedia\MediaCodecs\Parser\ParserInterface;
+use BohnMedia\MimeTypeCodecs\Parser\IsoBmffParser;
+use BohnMedia\MimeTypeCodecs\Parser\MatroskaParser;
+use BohnMedia\MimeTypeCodecs\Parser\ParserInterface;
 
 /**
  * Detects the complete media type (essence and codecs) of audio and video files by reading the container header.

@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs\Parser;
+namespace BohnMedia\MimeTypeCodecs\Parser;
 
-use BohnMedia\MediaCodecs\MediaType;
+use BohnMedia\MimeTypeCodecs\MediaType;
 
 /**
  * MP4, M4A, M4V and QuickTime (ISO/IEC 14496-12). Walks moov → trak → mdia → minf → stbl → stsd and reads the codec

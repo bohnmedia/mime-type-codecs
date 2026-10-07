@@ -2,10 +2,10 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs\Tests;
+namespace BohnMedia\MimeTypeCodecs\Tests;
 
-use BohnMedia\MediaCodecs\MediaType;
-use BohnMedia\MediaCodecs\MediaTypeDetector;
+use BohnMedia\MimeTypeCodecs\MediaType;
+use BohnMedia\MimeTypeCodecs\MediaTypeDetector;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
 

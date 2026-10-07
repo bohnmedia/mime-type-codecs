@@ -2,9 +2,9 @@
 
 declare(strict_types=1);
 
-namespace BohnMedia\MediaCodecs\Tests;
+namespace BohnMedia\MimeTypeCodecs\Tests;
 
-use BohnMedia\MediaCodecs\Parser\Codecs;
+use BohnMedia\MimeTypeCodecs\Parser\Codecs;
 use PHPUnit\Framework\TestCase;
 
 /**
