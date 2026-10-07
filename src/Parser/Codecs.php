@@ -12,6 +12,25 @@ namespace BohnMedia\MediaCodecs\Parser;
 final class Codecs
 {
     /**
+     * The codecs of the given audio and video tracks in order, without duplicates. If the codec of one track is unknown,
+     * the list is empty: an incomplete codecs parameter would let a browser choose a file it cannot play.
+     *
+     * @param array<array{codec: string|null}> $tracks
+     *
+     * @return list<string>
+     */
+    public static function collect(array $tracks): array
+    {
+        $codecs = array_column($tracks, 'codec');
+
+        if (\in_array(null, $codecs, true)) {
+            return [];
+        }
+
+        return array_values(array_unique($codecs));
+    }
+
+    /**
      * AV1CodecConfigurationRecord (av1C): av01.P.LLT.DD, e.g. av01.0.08M.08
      */
     public static function av1(string $record): string|null
@@ -78,7 +97,7 @@ final class Codecs
         return sprintf('%s.%s%d.%X.%s%d%s', $fourcc, ['', 'A', 'B', 'C'][$profileSpace], $profileIdc, $reversed, $tier, $levelIdc, $parts ? '.'.implode('.', $parts) : '');
     }
 
-    private static function uint32(string $bytes, int $offset): int
+    public static function uint32(string $bytes, int $offset): int
     {
         return (\ord($bytes[$offset]) << 24) | (\ord($bytes[$offset + 1]) << 16) | (\ord($bytes[$offset + 2]) << 8) | \ord($bytes[$offset + 3]);
     }
@@ -118,9 +137,12 @@ final class Codecs
                 }
             }
 
-            if (0x03 === $tag) { // ES_Descriptor: ES_ID (2), flags (1), then nested descriptors
+            if (0x03 === $tag) { // ES_Descriptor: ES_ID (2), flags (1), optional fields in this order, then nested descriptors
                 $flags = \ord($esds[$offset + 2] ?? "\0");
-                $offset += 3 + ($flags & 0x80 ? 2 : 0) + ($flags & 0x40 ? 1 + \ord($esds[$offset + 3] ?? "\0") : 0) + ($flags & 0x20 ? 2 : 0);
+                $offset += 3;
+                $offset += $flags & 0x80 ? 2 : 0; // dependsOn_ES_ID
+                $offset += $flags & 0x40 ? 1 + \ord($esds[$offset] ?? "\0") : 0; // URL length + URL
+                $offset += $flags & 0x20 ? 2 : 0; // OCR_ES_ID
                 continue;
             }
 
@@ -130,19 +152,71 @@ final class Codecs
                 continue;
             }
 
-            if (0x05 === $tag && null !== $objectType) { // DecoderSpecificInfo: first five bits = audioObjectType
-                $audioObjectType = \ord($esds[$offset] ?? "\0") >> 3;
+            if (0x05 === $tag && null !== $objectType) { // DecoderSpecificInfo = AudioSpecificConfig
+                $audioObjectType = self::audioObjectType(substr($esds, $offset, $size));
 
-                if (31 === $audioObjectType && $offset + 1 < $length) {
-                    $audioObjectType = 32 + (((\ord($esds[$offset]) & 0x07) << 3) | (\ord($esds[$offset + 1]) >> 5));
-                }
-
-                return sprintf('mp4a.%02X.%d', $objectType, $audioObjectType);
+                return null !== $audioObjectType ? sprintf('mp4a.%02X.%d', $objectType, $audioObjectType) : sprintf('mp4a.%02X', $objectType);
             }
 
             $offset += $size;
         }
 
         return null !== $objectType ? sprintf('mp4a.%02X', $objectType) : null;
+    }
+
+    /**
+     * AAC in Matroska: the CodecPrivate is the AudioSpecificConfig, e.g. mp4a.40.2 for AAC-LC or mp4a.40.5 for HE-AAC
+     */
+    public static function aac(string $audioSpecificConfig): string|null
+    {
+        $audioObjectType = self::audioObjectType($audioSpecificConfig);
+
+        return null !== $audioObjectType ? sprintf('mp4a.40.%d', $audioObjectType) : null;
+    }
+
+    /**
+     * VP9 in Matroska: the CodecPrivate is a list of feature ID (1 byte), length (1 byte) and value; 1 = profile,
+     * 2 = level, 3 = bit depth. Returns null if one of them is missing.
+     */
+    public static function vp9FromMatroska(string $private): string|null
+    {
+        $features = [];
+
+        for ($offset = 0, $length = \strlen($private); $offset + 2 <= $length; $offset += 2 + $size) {
+            $id = \ord($private[$offset]);
+            $size = \ord($private[$offset + 1]);
+
+            if (1 === $size && $offset + 2 < $length) {
+                $features[$id] = \ord($private[$offset + 2]);
+            }
+        }
+
+        if (!isset($features[1], $features[2], $features[3])) {
+            return null;
+        }
+
+        return sprintf('vp09.%02d.%02d.%02d', $features[1], $features[2], $features[3]);
+    }
+
+    /**
+     * The first five bits of an AudioSpecificConfig; 31 is an escape for values from 32 on (ISO/IEC 14496-3).
+     */
+    private static function audioObjectType(string $audioSpecificConfig): int|null
+    {
+        if ('' === $audioSpecificConfig) {
+            return null;
+        }
+
+        $audioObjectType = \ord($audioSpecificConfig[0]) >> 3;
+
+        if (31 === $audioObjectType) {
+            if (\strlen($audioSpecificConfig) < 2) {
+                return null;
+            }
+
+            $audioObjectType = 32 + (((\ord($audioSpecificConfig[0]) & 0x07) << 3) | (\ord($audioSpecificConfig[1]) >> 5));
+        }
+
+        return $audioObjectType ?: null;
     }
 }

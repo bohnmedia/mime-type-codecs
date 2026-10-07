@@ -24,7 +24,7 @@ final class IsoBmffParser implements ParserInterface
 
     public function supports(string $head): bool
     {
-        return 'ftyp' === substr($head, 4, 4) || 'moov' === substr($head, 4, 4) || 'wide' === substr($head, 4, 4) || 'mdat' === substr($head, 4, 4);
+        return \in_array(substr($head, 4, 4), ['ftyp', 'moov', 'mdat', 'wide', 'free', 'skip'], true);
     }
 
     public function parse($stream): MediaType|null
@@ -43,15 +43,15 @@ final class IsoBmffParser implements ParserInterface
 
         $video = array_filter($this->tracks, static fn (array $t): bool => 'vide' === $t['handler']);
         $audio = array_filter($this->tracks, static fn (array $t): bool => 'soun' === $t['handler']);
-        $codecs = array_values(array_unique(array_filter(array_map(static fn (array $t): string|null => $t['codec'], [...$video, ...$audio]))));
 
-        if ('qt  ' === $brand) {
+        // Files without ftyp are old QuickTime movies; an ISO file always starts with ftyp
+        if (null === $brand || 'qt  ' === $brand) {
             $essence = 'video/quicktime';
         } else {
             $essence = $video ? 'video/mp4' : 'audio/mp4';
         }
 
-        return new MediaType($essence, $codecs);
+        return new MediaType($essence, Codecs::collect([...$video, ...$audio]));
     }
 
     private function walk(int $start, int $end, string $parent): void
@@ -64,12 +64,12 @@ final class IsoBmffParser implements ParserInterface
                 return;
             }
 
-            $size = $this->uint32($header, 0);
+            $size = Codecs::uint32($header, 0);
             $type = substr($header, 4, 4);
             $headerSize = 8;
 
             if (1 === $size && \strlen($header) >= 16) { // 64 bit size
-                $size = ($this->uint32($header, 8) << 32) | $this->uint32($header, 12);
+                $size = (Codecs::uint32($header, 8) << 32) | Codecs::uint32($header, 12);
                 $headerSize = 16;
             } elseif (0 === $size) { // box extends to the end of the file
                 $size = $end - $offset;
@@ -97,7 +97,7 @@ final class IsoBmffParser implements ParserInterface
     private function readSampleDescriptions(int $start, int $end): void
     {
         fseek($this->stream, $start);
-        $count = $this->uint32((string) fread($this->stream, 8)."\0\0\0\0\0\0\0\0", 4); // version/flags, entry count
+        $count = Codecs::uint32((string) fread($this->stream, 8)."\0\0\0\0\0\0\0\0", 4); // version/flags, entry count
         $offset = $start + 8;
 
         for ($i = 0; $i < $count && $offset + 16 <= $end; ++$i) {
@@ -108,7 +108,7 @@ final class IsoBmffParser implements ParserInterface
                 break;
             }
 
-            $size = $this->uint32($header, 0);
+            $size = Codecs::uint32($header, 0);
             $fourcc = substr($header, 4, 4);
 
             if ($size < 8) {
@@ -128,7 +128,7 @@ final class IsoBmffParser implements ParserInterface
             'avc1', 'avc3' => Codecs::avc($this->findBox($start + 78, $end, 'avcC') ?? '', $fourcc),
             'hvc1', 'hev1' => Codecs::hevc($this->findBox($start + 78, $end, 'hvcC') ?? '', $fourcc),
             'vp09' => Codecs::vp9(substr($this->findBox($start + 78, $end, 'vpcC') ?? '', 4)),
-            'mp4a' => Codecs::mp4a($this->findBoxInAudioEntry($start, $end, 'esds') ?? ''),
+            'mp4a' => null !== ($esds = $this->findEsds($start, $end)) ? Codecs::mp4a($esds) : null,
             'Opus' => 'opus',
             'fLaC' => 'flac',
             'ac-3' => 'ac-3',
@@ -139,24 +139,52 @@ final class IsoBmffParser implements ParserInterface
     }
 
     /**
-     * Audio sample entries have a version-dependent length (QuickTime v1/v2 add fields), so the esds box is searched after
-     * the common 28 bytes.
+     * Returns the ES descriptors of an mp4a sample entry (without the version/flags of the esds box). The fields of an
+     * audio sample entry are 20 bytes long; QuickTime version 1 and 2 add 16 or 36 bytes and wrap the esds box in a
+     * wave box.
      */
-    private function findBoxInAudioEntry(int $start, int $end, string $type): string|null
+    private function findEsds(int $start, int $end): string|null
     {
-        foreach ([28, 44, 64] as $fieldsLength) {
-            if (null !== ($payload = $this->findBox($start + $fieldsLength, $end, $type))) {
-                return substr($payload, 4); // skip version/flags of the full box
-            }
+        fseek($this->stream, $start + 8); // reserved (6), data reference index (2)
+        $version = unpack('n', (string) fread($this->stream, 2)."\0\0")[1] ?? 0;
+        $childrenStart = $start + 8 + ([0 => 20, 1 => 36, 2 => 56][$version] ?? 20);
+
+        if (null !== ($wave = $this->locateBox($childrenStart, $end, 'wave'))) {
+            [$childrenStart, $end] = $wave;
         }
 
-        return null;
+        $esds = $this->findBox($childrenStart, $end, 'esds');
+
+        return null !== $esds ? substr($esds, 4) : null;
     }
 
     /**
      * Returns the payload of the first child box of the given type between $start and $end.
      */
     private function findBox(int $start, int $end, string $type): string|null
+    {
+        if (null === ($box = $this->locateBox($start, $end, $type))) {
+            return null;
+        }
+
+        [$payloadStart, $payloadEnd] = $box;
+        $length = $payloadEnd - $payloadStart;
+
+        if ($length < 1) {
+            return '';
+        }
+
+        fseek($this->stream, $payloadStart);
+
+        return (string) fread($this->stream, $length);
+    }
+
+    /**
+     * Returns start and end of the payload of the first child box of the given type between $start and $end.
+     *
+     * @return array{0: int, 1: int}|null
+     */
+    private function locateBox(int $start, int $end, string $type): array|null
     {
         for ($offset = $start; $offset + 8 <= $end; $offset += $size) {
             fseek($this->stream, $offset);
@@ -166,14 +194,14 @@ final class IsoBmffParser implements ParserInterface
                 return null;
             }
 
-            $size = $this->uint32($header, 0);
+            $size = Codecs::uint32($header, 0);
 
             if ($size < 8 || $offset + $size > $end) {
                 return null;
             }
 
             if (substr($header, 4, 4) === $type) {
-                return 8 === $size ? '' : (string) fread($this->stream, $size - 8);
+                return [$offset + 8, $offset + $size];
             }
         }
 
@@ -189,11 +217,6 @@ final class IsoBmffParser implements ParserInterface
 
     private function size(): int
     {
-        return (int) (fstat($this->stream)['size'] ?? 0);
-    }
-
-    private function uint32(string $bytes, int $offset): int
-    {
-        return (\ord($bytes[$offset]) << 24) | (\ord($bytes[$offset + 1]) << 16) | (\ord($bytes[$offset + 2]) << 8) | \ord($bytes[$offset + 3]);
+        return (int) ((fstat($this->stream) ?: [])['size'] ?? 0);
     }
 }

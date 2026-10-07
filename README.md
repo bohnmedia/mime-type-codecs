@@ -48,11 +48,17 @@ A damaged header never throws.
 | MP4, M4A, M4V (ISO BMFF) | `video/mp4`, `audio/mp4` | AV1 (`av01`), HEVC (`hvc1`, `hev1`), H.264 (`avc1`, `avc3`), VP9 (`vp09`) | AAC and other MPEG-4 audio (`mp4a`), Opus, FLAC, AC-3, E-AC-3, MP3 |
 | QuickTime | `video/quicktime` | as above | as above |
 | WebM | `video/webm`, `audio/webm` | AV1, VP9, VP8 | Opus, Vorbis |
-| Matroska | `video/x-matroska`, `audio/x-matroska` | AV1, VP9, VP8, HEVC, H.264 | Opus, Vorbis, FLAC, AAC, MP3 |
+| Matroska | `video/x-matroska`, `audio/x-matroska` | AV1, VP9, VP8, HEVC, H.264 | Opus, Vorbis, FLAC, AAC, MP3, AC-3, E-AC-3 |
 
 Profile, level and bit depth are read from the decoder configuration records (`av1C`, `avcC`, `hvcC`, `vpcC`, `esds`),
 so the strings are exact for the file at hand. For VP9 in WebM without `CodecPrivate` the short form `vp9` is used,
 which browsers accept.
+
+Only the header is read; the media data is skipped by seeking. This also covers MP4 files with the `moov` box at the
+end and Matroska files whose Tracks follow the Clusters (found via the SeekHead).
+
+If the codec of one audio or video track is not supported, the media type is returned without codecs (e.g. `video/mp4`
+for MPEG-4 Part 2 video). An incomplete codecs parameter would let a browser choose a file it cannot play.
 
 ## Development
 

@@ -8,12 +8,18 @@ use BohnMedia\MediaCodecs\MediaType;
 
 /**
  * WebM and Matroska (EBML). Reads the DocType and the Tracks element: TrackType, CodecID and CodecPrivate of every track.
- * Tracks are part of the header and usually follow SeekHead and Info; Clusters are skipped by seeking.
+ * Tracks usually precede the first Cluster. If not, a SeekHead before the first Cluster must point to them (RFC 9559),
+ * so the Clusters themselves are never read.
  */
 final class MatroskaParser implements ParserInterface
 {
     private const EBML = 0x1A45DFA3;
     private const SEGMENT = 0x18538067;
+    private const SEEK_HEAD = 0x114D9B74;
+    private const SEEK = 0x4DBB;
+    private const SEEK_ID = 0x53AB;
+    private const SEEK_POSITION = 0x53AC;
+    private const CLUSTER = 0x1F43B675;
     private const TRACKS = 0x1654AE6B;
     private const TRACK_ENTRY = 0xAE;
     private const TRACK_TYPE = 0x83;
@@ -37,7 +43,7 @@ final class MatroskaParser implements ParserInterface
         $docType = 'matroska';
         $tracks = [];
 
-        foreach ($this->children(0, fstat($stream)['size'] ?? 0) as [$id, $start, $end]) {
+        foreach ($this->children(0, (int) ((fstat($stream) ?: [])['size'] ?? 0)) as [$id, $start, $end]) {
             if (self::EBML === $id) {
                 foreach ($this->children($start, $end) as [$childId, $childStart, $childEnd]) {
                     if (self::DOC_TYPE === $childId) {
@@ -45,16 +51,8 @@ final class MatroskaParser implements ParserInterface
                     }
                 }
             } elseif (self::SEGMENT === $id) {
-                foreach ($this->children($start, $end) as [$childId, $childStart, $childEnd]) {
-                    if (self::TRACKS === $childId) {
-                        $tracks = $this->readTracks($childStart, $childEnd);
-                        break 2;
-                    }
-
-                    if (0x1F43B675 === $childId) { // first Cluster: the header is over
-                        break 2;
-                    }
-                }
+                $tracks = $this->readSegment($start, $end);
+                break;
             }
         }
 
@@ -64,10 +62,98 @@ final class MatroskaParser implements ParserInterface
 
         $video = array_filter($tracks, static fn (array $t): bool => 1 === $t['type']);
         $audio = array_filter($tracks, static fn (array $t): bool => 2 === $t['type']);
-        $codecs = array_values(array_unique(array_filter(array_map(static fn (array $t): string|null => $t['codec'], [...$video, ...$audio]))));
         $essence = ('webm' === $docType ? ($video ? 'video/webm' : 'audio/webm') : ($video ? 'video/x-matroska' : 'audio/x-matroska'));
 
-        return new MediaType($essence, $codecs);
+        return new MediaType($essence, Codecs::collect([...$video, ...$audio]));
+    }
+
+    /**
+     * Reads the Tracks before the first Cluster or, if they are stored at the end, follows the SeekHead to them.
+     *
+     * @return list<array{type: int, codec: string|null}>
+     */
+    private function readSegment(int $start, int $end): array
+    {
+        $positions = [];
+
+        foreach ($this->children($start, $end) as [$id, $childStart, $childEnd]) {
+            if (self::TRACKS === $id) {
+                return $this->readTracks($childStart, $childEnd);
+            }
+
+            if (self::SEEK_HEAD === $id) {
+                $positions = [...$positions, ...$this->readSeekHead($childStart, $childEnd)];
+            }
+
+            if (self::CLUSTER === $id) { // the header is over
+                break;
+            }
+        }
+
+        // A SeekHead may point to a second SeekHead at the end of the file, which then lists the Tracks
+        foreach ($positions as [$id, $position]) {
+            if (self::SEEK_HEAD === $id && null !== ($element = $this->elementAt($start + $position, $end, self::SEEK_HEAD))) {
+                $positions = [...$positions, ...$this->readSeekHead(...$element)];
+            }
+        }
+
+        foreach ($positions as [$id, $position]) {
+            if (self::TRACKS === $id && null !== ($element = $this->elementAt($start + $position, $end, self::TRACKS))) {
+                return $this->readTracks(...$element);
+            }
+        }
+
+        return [];
+    }
+
+    /**
+     * Returns the referenced element IDs with their positions relative to the start of the Segment data.
+     *
+     * @return list<array{0: int, 1: int}>
+     */
+    private function readSeekHead(int $start, int $end): array
+    {
+        $positions = [];
+
+        foreach ($this->children($start, $end) as [$id, $seekStart, $seekEnd]) {
+            if (self::SEEK !== $id) {
+                continue;
+            }
+
+            $seekId = $position = null;
+
+            foreach ($this->children($seekStart, $seekEnd) as [$childId, $childStart, $childEnd]) {
+                match ($childId) {
+                    self::SEEK_ID => $seekId = $this->uint($this->read($childStart, $childEnd - $childStart)), // the ID including its length marker
+                    self::SEEK_POSITION => $position = $this->uint($this->read($childStart, $childEnd - $childStart)),
+                    default => null,
+                };
+            }
+
+            if (null !== $seekId && null !== $position) {
+                $positions[] = [$seekId, $position];
+            }
+        }
+
+        return $positions;
+    }
+
+    /**
+     * Returns data start and end of the element at $offset if it has the expected ID; a SeekHead may be outdated.
+     *
+     * @return array{0: int, 1: int}|null
+     */
+    private function elementAt(int $offset, int $end, int $expectedId): array|null
+    {
+        if ($offset < 0 || $offset >= $end) {
+            return null;
+        }
+
+        foreach ($this->children($offset, $end) as [$id, $start, $elementEnd]) {
+            return $expectedId === $id ? [$start, $elementEnd] : null;
+        }
+
+        return null;
     }
 
     /**
@@ -90,7 +176,7 @@ final class MatroskaParser implements ParserInterface
                 $value = $this->read($childStart, $childEnd - $childStart);
 
                 match ($childId) {
-                    self::TRACK_TYPE => $type = \ord($value[0] ?? "\0"),
+                    self::TRACK_TYPE => $type = $this->uint($value),
                     self::CODEC_ID => $codecId = $value,
                     self::CODEC_PRIVATE => $private = $value,
                     default => null,
@@ -107,14 +193,20 @@ final class MatroskaParser implements ParserInterface
     {
         return match (true) {
             'V_AV1' === $codecId => Codecs::av1($private),
-            'V_VP9' === $codecId => \strlen($private) >= 6 && 1 === \ord($private[0]) ? sprintf('vp09.%02d.%02d.%02d', \ord($private[2]), \ord($private[5] ?? "\0") ?: 10, \ord($private[8] ?? "\x08")) : 'vp9',
+            'V_VP9' === $codecId => Codecs::vp9FromMatroska($private) ?? 'vp9', // the CodecPrivate is optional, browsers accept the short form
             'V_VP8' === $codecId => 'vp8',
             'V_MPEG4/ISO/AVC' === $codecId => Codecs::avc($private),
             'V_MPEGH/ISO/HEVC' === $codecId => Codecs::hevc($private),
             'A_OPUS' === $codecId => 'opus',
             'A_VORBIS' === $codecId => 'vorbis',
             'A_FLAC' === $codecId => 'flac',
-            str_starts_with($codecId, 'A_AAC') => 'mp4a.40.2',
+            str_starts_with($codecId, 'A_AAC') => Codecs::aac($private) ?? match ($codecId) { // old IDs without CodecPrivate
+                'A_AAC/MPEG4/LC', 'A_AAC/MPEG2/LC' => 'mp4a.40.2',
+                'A_AAC/MPEG4/LC/SBR', 'A_AAC/MPEG2/LC/SBR' => 'mp4a.40.5',
+                default => null,
+            },
+            'A_AC3' === $codecId => 'ac-3',
+            'A_EAC3' === $codecId => 'ec-3',
             'A_MPEG/L3' === $codecId => 'mp3',
             default => null,
         };
@@ -186,6 +278,20 @@ final class MatroskaParser implements ParserInterface
         }
 
         return [$allOnes ? PHP_INT_MAX : $value, $length]; // all ones = unknown size (live streams)
+    }
+
+    /**
+     * EBML unsigned integers have 0 to 8 bytes, big endian.
+     */
+    private function uint(string $bytes): int
+    {
+        $value = 0;
+
+        for ($i = 0, $n = \strlen($bytes); $i < $n; ++$i) {
+            $value = ($value << 8) | \ord($bytes[$i]);
+        }
+
+        return $value;
     }
 
     private function read(int $start, int $length): string

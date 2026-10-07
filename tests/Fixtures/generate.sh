@@ -23,10 +23,16 @@ ffmpeg $Q $V -c:v libx265 -tag:v hev1 -x265-params log-level=none:level-idc=30:n
 ffmpeg $Q $V $A -c:v libx264 -profile:v high -level 3.1 -c:a aac -b:a 32k h264-aac.mp4
 ffmpeg $Q $V -c:v libx264 -profile:v high -level 1.0 -an -movflags +faststart h264-faststart.mp4
 ffmpeg $Q $V -c:v libx264 -profile:v baseline -level 3.0 -an h264-baseline.mov
+# QuickTime sound description version 1: the esds box is wrapped in a wave box
+ffmpeg $Q $V $A -c:v libx264 -profile:v baseline -level 3.0 -c:a aac -b:a 32k h264-aac.mov
 ffmpeg $Q $V $A -c:v libx264 -profile:v high -level 1.0 -c:a aac -b:a 32k h264-aac.mkv
 # VP9/VP8: profile 0; ffmpeg writes no CodecPrivate for VP9 in WebM, so the short form "vp9" is expected
 ffmpeg $Q $V $A -c:v libvpx-vp9 -profile:v 0 -c:a libopus -b:a 32k vp9-opus.webm
 ffmpeg $Q $V $A -c:v libvpx -c:a libvorbis vp8-vorbis.webm
+# Codecs without a mapping (MPEG-4 Part 2): the codecs parameter must be omitted
+ffmpeg $Q $V $A -c:v mpeg4 -c:a aac -b:a 32k mpeg4-aac.mp4
+# Matroska with VP9 CodecPrivate and AC-3
+ffmpeg $Q $V $A -c:v libvpx-vp9 -profile:v 0 -c:a ac3 vp9-ac3.mkv
 # Audio only
 ffmpeg $Q $A -c:a aac -b:a 32k aac.m4a
 ffmpeg $Q $A -c:a libopus -b:a 32k opus.webm

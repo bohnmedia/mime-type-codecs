@@ -35,12 +35,15 @@ class MediaTypeDetectorTest extends TestCase
         yield 'H.264 High 3.1 + AAC' => ['h264-aac.mp4', 'video/mp4; codecs="avc1.64001F, mp4a.40.2"'];
         yield 'H.264 with moov first (faststart)' => ['h264-faststart.mp4', 'video/mp4; codecs="avc1.64000A"'];
         yield 'H.264 Baseline in QuickTime' => ['h264-baseline.mov', 'video/quicktime; codecs="avc1.42C01E"'];
-        yield 'VP9 + Opus in WebM' => ['vp9-opus.webm', 'video/webm; codecs="vp9, opus"']; // ffmpeg writes no CodecPrivate for VP9, so profile and level are unknown
+        yield 'H.264 + AAC in QuickTime (esds in wave box)' => ['h264-aac.mov', 'video/quicktime; codecs="avc1.42C01E, mp4a.40.2"'];
+        yield 'unknown video codec: no codecs parameter' => ['mpeg4-aac.mp4', 'video/mp4'];
+        yield 'VP9 + Opus in WebM' => ['vp9-opus.webm', 'video/webm; codecs="vp9, opus"'];
         yield 'AV1 in WebM' => ['av1.webm', 'video/webm; codecs="av01.0.00M.08"'];
         yield 'VP8 + Vorbis in WebM' => ['vp8-vorbis.webm', 'video/webm; codecs="vp8, vorbis"'];
         yield 'AAC in M4A' => ['aac.m4a', 'audio/mp4; codecs="mp4a.40.2"'];
         yield 'Opus in WebM (audio only)' => ['opus.webm', 'audio/webm; codecs="opus"'];
         yield 'H.264 + AAC in Matroska' => ['h264-aac.mkv', 'video/x-matroska; codecs="avc1.64000A, mp4a.40.2"'];
+        yield 'VP9 + AC-3 in Matroska' => ['vp9-ac3.mkv', 'video/x-matroska; codecs="vp9, ac-3"'];
         yield 'not a media file' => ['plain.txt', null];
     }
 
