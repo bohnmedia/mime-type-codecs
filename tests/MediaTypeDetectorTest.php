@@ -30,8 +30,8 @@ class MediaTypeDetectorTest extends TestCase
     {
         yield 'AV1 + AAC in MP4' => ['av1-aac.mp4', 'video/mp4; codecs="av01.0.00M.08, mp4a.40.2"'];
         yield 'AV1 10 bit' => ['av1-10bit.mp4', 'video/mp4; codecs="av01.0.00M.10"'];
-        yield 'HEVC hvc1 + AAC' => ['hevc-hvc1-aac.mp4', 'video/mp4; codecs="hvc1.1.6.L30.90, mp4a.40.2"'];
-        yield 'HEVC hev1' => ['hevc-hev1.mp4', 'video/mp4; codecs="hev1.1.6.L30.90"'];
+        yield 'HEVC hvc1 + AAC' => ['hevc-hvc1-aac.mp4', 'video/mp4; codecs="hvc1.1.6.L90.90, mp4a.40.2"'];
+        yield 'HEVC hev1' => ['hevc-hev1.mp4', 'video/mp4; codecs="hev1.1.6.L90.90"'];
         yield 'H.264 High 3.1 + AAC' => ['h264-aac.mp4', 'video/mp4; codecs="avc1.64001F, mp4a.40.2"'];
         yield 'H.264 with moov first (faststart)' => ['h264-faststart.mp4', 'video/mp4; codecs="avc1.64000A"'];
         yield 'H.264 Baseline in QuickTime' => ['h264-baseline.mov', 'video/quicktime; codecs="avc1.42C01E"'];

@@ -62,3 +62,7 @@ composer test
 composer phpstan
 tests/Fixtures/generate.sh   # regenerates the fixtures with ffmpeg
 ```
+
+The fixtures are committed reference files; the tests run against them, not against freshly generated ones. The
+generation script pins profile and level wherever the encoder allows it. If you regenerate the files, compare the
+expectations in the test against `ffprobe -show_streams`.
