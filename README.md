@@ -1,7 +1,7 @@
 # bohnmedia/mime-type-codecs
 
 Reads the complete media type of audio and video files from the container header, including the
-[RFC 6381 `codecs` parameter](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/codecs_parameter):
+`codecs` parameter as defined in [RFC 6381](https://developer.mozilla.org/en-US/docs/Web/Media/Guides/Formats/codecs_parameter):
 
 ```
 video/mp4; codecs="av01.0.08M.10, mp4a.40.2"
